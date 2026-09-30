@@ -283,10 +283,11 @@ export function startHost({ dataDir, port = 3100, host = '127.0.0.1' } = {}) {
         }
         return sendText(res, 404, `not found: ${pathname}`);
       }
-      // The settings window lives here rather than in ../public so it is
-      // served same-origin with the API (no CORS) but never reaches the cloud.
-      if (pathname === '/settings' || pathname === '/settings.html') {
-        const html = await readFile(join(fileURLToPath(new URL('.', import.meta.url)), 'settings.html'));
+      // The host console lives here rather than in ../public: it is served
+      // same-origin with the API (no CORS) and never ships to the cloud app,
+      // because managing agents is the desktop's job, not the web client's.
+      if (pathname === '/console' || pathname === '/settings') {
+        const html = await readFile(join(fileURLToPath(new URL('.', import.meta.url)), 'console.html'));
         res.writeHead(200, { 'Content-Type': MIME['.html'] });
         return res.end(html);
       }

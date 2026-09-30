@@ -4,7 +4,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hello Crew settings</title>
+    <title>Hello Crew host</title>
     <style>
       :root {
         --bg: #101218; --panel: #181b25; --panel-2: #1e2230; --line: rgba(255, 255, 255, 0.09);
@@ -13,8 +13,10 @@
       * { box-sizing: border-box; }
       body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 'Segoe UI', system-ui, sans-serif; }
       .wrap { max-width: 1000px; margin: 0 auto; padding: 28px 20px 60px; }
+      .top { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
+      .top button { margin-left: auto; flex: none; }
       h1 { font-size: 22px; margin: 0 0 4px; }
-      .sub { color: var(--muted); margin: 0 0 22px; }
+      .sub { color: var(--muted); margin: 0; }
       .status { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 26px; }
       .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px; font-size: 12.5px; color: var(--muted); }
       .chip b { color: var(--text); font-weight: 600; }
@@ -55,8 +57,13 @@
   </head>
   <body>
     <div class="wrap">
-      <h1>Agents and settings</h1>
-      <p class="sub">Agents run on this machine. Nothing here leaves your computer.</p>
+      <header class="top">
+        <div>
+          <h1>Hello Crew host</h1>
+          <p class="sub">This machine hosts your agents. People talk to them from the web app.</p>
+        </div>
+        <button class="primary" id="open-call">Open call view</button>
+      </header>
 
       <div class="status" id="status"></div>
 
@@ -233,6 +240,8 @@
         if (!$('f-model').value) $('f-model').selectedIndex = 0;
         renderList();
       }
+
+      $('open-call').onclick = () => window.open('/', '_blank');
 
       await load();
       select(null);

@@ -5,7 +5,7 @@
 ### Hands-free video calls with AI companions that live in their own 3D rooms
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-6c8cff?style=flat-square)](LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/yashgadbail/interactive-ar-agent/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/yashgadbail/interactive-ar-agent/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/yashgadbail/hello-crew/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/yashgadbail/hello-crew/actions/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A5%2022.13-3fb6ff?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A4%203.12-f5a524?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2bb673?style=flat-square&logo=docker&logoColor=white)](compose.yaml)

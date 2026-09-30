@@ -8,9 +8,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PERSONAS, publicPersona } from './lib/personas.js';
-import { respond, CHAT_MODEL } from './lib/chat.js';
-import { addDocument, listDocuments, removeDocument, EMBED_MODEL } from './lib/rag.js';
+import { listAgents, resolveAgent, runtimeFor, publicAgent } from './lib/agents.js';
+import { llmFor, embedderFor, DEFAULT_MODEL, DEFAULT_EMBED } from './lib/providers/index.js';
+import { respond } from './lib/chat.js';
+import { addDocument, listDocuments, removeDocument } from './lib/rag.js';
 import { fetchPage } from './lib/web.js';
 import { AuthError, signUp, logIn, renameUser, createSession, userFromRequest, endSession, signupMode, seedInvites } from './lib/auth.js';
 import { getHistory, addMessage, historyCounts, getMemory, forget, eraseAll, saveStudy, learnFromTurn, memoryNote, greetingFor } from './lib/memory.js';
@@ -18,7 +19,6 @@ import { ready as dbReady, query } from './lib/db.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, '');
 const TTS_URL = (process.env.TTS_URL || 'http://127.0.0.1:5005').replace(/\/$/, '');
 const NCERT_URL = (process.env.NCERT_URL || 'http://127.0.0.1:5006').replace(/\/$/, '');
 const ROOT_DIR = fileURLToPath(new URL('.', import.meta.url));
@@ -81,6 +81,12 @@ async function readJson(req, limit) {
 // Shared documents (RAG) are kept per user.
 const docsKey = (user) => `user-${user.id}`;
 
+// The server's own providers, for work that is not part of an agent's turn:
+// learning from a conversation after it ends, and embedding uploaded documents
+// (the upload UI is not tied to a character).
+const utilityLlm = llmFor(DEFAULT_MODEL);
+const utilityEmbedder = embedderFor(DEFAULT_EMBED);
+
 async function serveStatic(req, res) {
   let pathname;
   try {
@@ -132,27 +138,53 @@ async function handleBooks(res) {
   }
 }
 
-async function handleHealth(res) {
-  const [tts, ncert] = await Promise.all([ttsHealth(), ncertHealth()]);
-  let names = [];
-  let error = null;
+// The browser re-checks health every time a call starts, so cache the model
+// list briefly rather than hitting the provider on each one.
+const MODEL_TTL_MS = 30_000;
+const modelCache = new Map(); // `${kind}:${baseUrl}` -> { at, names }
+
+async function pulledModels(llm) {
+  const key = `${llm.kind}:${llm.baseUrl}`;
+  const hit = modelCache.get(key);
+  if (hit && Date.now() - hit.at < MODEL_TTL_MS) return hit.names;
+  const names = await llm.listModels();
+  modelCache.set(key, { at: Date.now(), names });
+  return names;
+}
+
+/** Ollama reports either "name" or "name:latest". */
+const hasModel = (names, m) => names.includes(m) || names.includes(`${m}:latest`);
+
+/** Can this provider answer right now? Never throws. */
+async function modelStatus(llm, embedModel) {
+  // A hosted provider has nothing to download, so there is nothing to check.
+  if (!llm.listModels) return { ok: true, error: null, warning: null, names: [] };
+  let names;
   try {
-    const { models = [] } = await (await fetch(`${OLLAMA_URL}/api/tags`)).json();
-    names = models.map((m) => m.name);
+    names = await pulledModels(llm);
   } catch {
-    error = `Can't reach Ollama at ${OLLAMA_URL}. Start it with: ollama serve`;
+    return { ok: false, error: `Can't reach Ollama at ${llm.baseUrl}. Start it with: ollama serve`, warning: null, names: [] };
   }
-  const has = (m) => names.includes(m) || names.includes(`${m}:latest`);
-  if (!error && !has(CHAT_MODEL)) error = `Model "${CHAT_MODEL}" isn't downloaded yet. Run: ollama pull ${CHAT_MODEL}`;
-  sendJson(res, 200, {
-    ok: !error,
-    model: CHAT_MODEL,
-    rag: has(EMBED_MODEL),
-    tts,
-    ncert,
-    error,
-    warning: !error && !has(EMBED_MODEL) ? `Document search is off until you run: ollama pull ${EMBED_MODEL}` : null,
-  });
+  if (!hasModel(names, llm.model)) {
+    return { ok: false, error: `Model "${llm.model}" isn't downloaded yet. Run: ollama pull ${llm.model}`, warning: null, names };
+  }
+  const warning = embedModel && !hasModel(names, embedModel) ? `Document search is off until you run: ollama pull ${embedModel}` : null;
+  return { ok: true, error: null, warning, names };
+}
+
+/** Public: can this server hold a call at all? Reports only its own defaults. */
+async function handleHealth(res) {
+  const [tts, ncert, models] = await Promise.all([ttsHealth(), ncertHealth(), modelStatus(utilityLlm, utilityEmbedder.model)]);
+  sendJson(res, 200, { ok: models.ok, tts, ncert, error: models.error, warning: models.warning });
+}
+
+/** Authed: can THIS agent answer, on the model it is configured to use? */
+async function handleAgentHealth(res, agentId) {
+  const agent = resolveAgent(agentId);
+  if (!agent) return sendText(res, 404, 'Unknown agent');
+  const { llm, embedder } = runtimeFor(agent);
+  const { ok, error, warning, names } = await modelStatus(llm, embedder.model);
+  sendJson(res, 200, { ok, error, warning, provider: llm.kind, model: llm.model, pulled: hasModel(names, llm.model) });
 }
 
 // ---------------------------------------------------------------------------
@@ -161,8 +193,8 @@ async function handleHealth(res) {
 async function handleChat(req, res, user) {
   const body = await readJson(req);
   if (!body) return sendText(res, 400, 'Invalid JSON body');
-  const persona = PERSONAS.find((p) => p.id === body.persona);
-  if (!persona) return sendText(res, 400, 'Unknown persona');
+  const agent = resolveAgent(body.persona);
+  if (!agent) return sendText(res, 400, 'Unknown persona');
   const messages = (Array.isArray(body.messages) ? body.messages : []).filter(
     (m) => (m?.role === 'user' || m?.role === 'assistant') && typeof m.content === 'string' && m.content.trim(),
   );
@@ -170,7 +202,8 @@ async function handleChat(req, res, user) {
 
   const question = messages.at(-1).content;
   const memory = await getMemory(user.id);
-  await addMessage(user.id, persona.id, 'user', question);
+  await addMessage(user.id, agent.id, 'user', question);
+  const { llm, embedder } = runtimeFor(agent);
 
   const controller = new AbortController();
   res.on('close', () => controller.abort());
@@ -182,11 +215,13 @@ async function handleChat(req, res, user) {
   let reply = '';
   try {
     const events = respond({
-      persona,
+      agent,
       messages,
       sessionId: docsKey(user),
-      userNote: memoryNote(user, memory, persona),
-      study: persona.ncert ? memory.study : null,
+      llm,
+      embedder,
+      userNote: memoryNote(user, memory, agent),
+      study: agent.ncert ? memory.study : null,
       signal: controller.signal,
     });
     for await (const event of events) {
@@ -206,8 +241,8 @@ async function handleChat(req, res, user) {
   const interrupted = controller.signal.aborted;
   res.end();
   if (reply.trim()) {
-    await addMessage(user.id, persona.id, 'assistant', interrupted ? `${reply}…` : reply);
-    if (!interrupted) learnFromTurn(user.id, question);
+    await addMessage(user.id, agent.id, 'assistant', interrupted ? `${reply}…` : reply);
+    if (!interrupted) learnFromTurn(user.id, question, utilityLlm);
   }
 }
 
@@ -250,10 +285,10 @@ async function handleAuth(req, res, action) {
 
 /** A call is starting: the history with this character and a personal greeting. */
 async function handleCallStart(res, user, url) {
-  const persona = PERSONAS.find((p) => p.id === url.searchParams.get('persona'));
-  if (!persona) return sendText(res, 400, 'Unknown persona');
-  const history = await getHistory(user.id, persona.id);
-  const greeting = greetingFor(persona, user, await getMemory(user.id), history.length > 0);
+  const agent = resolveAgent(url.searchParams.get('persona'));
+  if (!agent) return sendText(res, 400, 'Unknown persona');
+  const history = await getHistory(user.id, agent.id);
+  const greeting = greetingFor(agent, user, await getMemory(user.id), history.length > 0);
   sendJson(res, 200, { history, greeting });
 }
 
@@ -285,11 +320,14 @@ async function handleMemory(req, res, user, url) {
 // ---------------------------------------------------------------------------
 async function handleDocs(req, res, url, user) {
   const session = docsKey(user);
+  // Uploads are not tied to a character, so they use the server's embedder. An
+  // agent on a different embedding model keeps its own set (see lib/rag.js).
+  const embedder = utilityEmbedder;
   if (req.method === 'GET') {
-    return sendJson(res, 200, { docs: listDocuments(session) });
+    return sendJson(res, 200, { docs: listDocuments(embedder, session) });
   }
   if (req.method === 'DELETE') {
-    return sendJson(res, 200, { removed: removeDocument(session, url.searchParams.get('id')) });
+    return sendJson(res, 200, { removed: removeDocument(embedder, session, url.searchParams.get('id')) });
   }
   if (req.method === 'POST') {
     const body = await readJson(req, 8_000_000);
@@ -298,9 +336,9 @@ async function handleDocs(req, res, url, user) {
       let doc;
       if (body.url) {
         const page = await fetchPage(body.url);
-        doc = await addDocument(session, { title: page.title, text: page.text, source: page.url, type: 'link' });
+        doc = await addDocument(embedder, session, { title: page.title, text: page.text, source: page.url, type: 'link' });
       } else if (typeof body.text === 'string' && body.text.trim()) {
-        doc = await addDocument(session, {
+        doc = await addDocument(embedder, session, {
           title: String(body.title || 'Document').slice(0, 200),
           text: body.text.slice(0, MAX_DOC_CHARS),
           type: body.type === 'pdf' ? 'pdf' : 'text',
@@ -366,7 +404,7 @@ async function handler(req, res) {
     // Public: sign in/up, and what the landing page needs to render.
     const auth = pathname.match(/^\/api\/auth\/(signup|login|logout|me)$/);
     if (auth) return await handleAuth(req, res, auth[1]);
-    if (pathname === '/api/personas' && req.method === 'GET') return sendJson(res, 200, { personas: PERSONAS.map(publicPersona) });
+    if (pathname === '/api/personas' && req.method === 'GET') return sendJson(res, 200, { personas: listAgents().map(publicAgent) });
     if (pathname === '/api/health' && req.method === 'GET') return await handleHealth(res);
     if (pathname === '/api/books' && req.method === 'GET') return await handleBooks(res);
 
@@ -376,6 +414,8 @@ async function handler(req, res) {
       if (!user) return sendJson(res, 401, { error: 'Please sign in.' });
       if (pathname === '/api/chat' && req.method === 'POST') return await handleChat(req, res, user);
       if (pathname === '/api/call' && req.method === 'GET') return await handleCallStart(res, user, url);
+      const agentHealth = pathname.match(/^\/api\/agents\/([\w-]+)\/health$/);
+      if (agentHealth && req.method === 'GET') return await handleAgentHealth(res, agentHealth[1]);
       if (pathname === '/api/memory') return await handleMemory(req, res, user, url);
       if (pathname === '/api/docs') return await handleDocs(req, res, url, user);
       if (pathname === '/api/tts' && req.method === 'POST') return await handleTts(req, res);
@@ -404,7 +444,7 @@ await seedInvites();
 server.listen(PORT, HOST, () => {
   const scheme = useHttps ? 'https' : 'http';
   console.log(`Hello Crew running at ${scheme}://localhost:${PORT}`);
-  console.log(`Using Ollama model "${CHAT_MODEL}" (+ "${EMBED_MODEL}" for documents) at ${OLLAMA_URL}`);
+  console.log(`Default model "${utilityLlm.model}" (+ "${utilityEmbedder.model}" for documents) via ${utilityLlm.kind} at ${utilityLlm.baseUrl}`);
   signupMode().then((mode) =>
     console.log(
       { invite: 'Sign-up needs an invite code (manage codes in the admin panel).', open: 'Sign-up is OPEN to anyone who can reach this server (change it in the admin panel).', closed: 'Sign-up is closed (change it in the admin panel).' }[mode],

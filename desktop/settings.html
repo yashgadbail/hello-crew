@@ -1,0 +1,241 @@
+<!doctype html>
+<!-- Hello Crew desktop settings. Served by host.js so it is same-origin with the API. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hello Crew settings</title>
+    <style>
+      :root {
+        --bg: #101218; --panel: #181b25; --panel-2: #1e2230; --line: rgba(255, 255, 255, 0.09);
+        --text: #f4f5fa; --muted: #9aa3bd; --accent: #6c8cff; --danger: #ff5d8f; --ok: #2bb673;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 'Segoe UI', system-ui, sans-serif; }
+      .wrap { max-width: 1000px; margin: 0 auto; padding: 28px 20px 60px; }
+      h1 { font-size: 22px; margin: 0 0 4px; }
+      .sub { color: var(--muted); margin: 0 0 22px; }
+      .status { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 26px; }
+      .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px; font-size: 12.5px; color: var(--muted); }
+      .chip b { color: var(--text); font-weight: 600; }
+      .cols { display: grid; grid-template-columns: 300px 1fr; gap: 22px; align-items: start; }
+      @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
+      .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+      h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin: 0 0 12px; }
+      ul { list-style: none; margin: 0; padding: 0; }
+      li.agent { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer; }
+      li.agent:hover { background: var(--panel-2); }
+      li.agent.on { background: var(--panel-2); outline: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); }
+      .dot { width: 26px; height: 26px; border-radius: 50%; flex: none; border: 2px solid rgba(255,255,255,.18); }
+      .who { min-width: 0; }
+      .who b { display: block; font-weight: 600; }
+      .who span { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tag { margin-left: auto; font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; }
+      label { display: block; margin: 0 0 12px; }
+      label span { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 5px; }
+      input, textarea, select {
+        width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+        border-radius: 9px; padding: 9px 11px; font: inherit;
+      }
+      textarea { min-height: 120px; resize: vertical; }
+      input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .actions { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
+      button { font: inherit; font-weight: 600; border-radius: 999px; border: 1px solid transparent; padding: 9px 18px; cursor: pointer; }
+      .primary { background: var(--accent); color: #0b0e17; }
+      .ghost { background: transparent; color: var(--text); border-color: var(--line); }
+      .danger { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      .msg { margin-left: auto; font-size: 13px; }
+      .msg.err { color: var(--danger); }
+      .msg.ok { color: var(--ok); }
+      .hint { color: var(--muted); font-size: 12.5px; margin: 14px 0 0; }
+      .readonly { background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 10px; padding: 10px 12px; font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Agents and settings</h1>
+      <p class="sub">Agents run on this machine. Nothing here leaves your computer.</p>
+
+      <div class="status" id="status"></div>
+
+      <div class="cols">
+        <div class="panel">
+          <h2>Agents</h2>
+          <ul id="list"></ul>
+          <div class="actions"><button class="ghost" id="new">New agent</button></div>
+        </div>
+
+        <div class="panel">
+          <h2 id="form-title">New agent</h2>
+          <div class="readonly" id="builtin-note" hidden>
+            This is a built-in character. Saving makes a copy on this machine that overrides it, so you can retune it freely.
+          </div>
+          <form id="form">
+            <div class="row">
+              <label><span>Name</span><input id="f-name" maxlength="60" placeholder="Ada" required /></label>
+              <label><span>Id (used in the URL, cannot change later)</span><input id="f-id" maxlength="40" placeholder="ada" required /></label>
+            </div>
+            <div class="row">
+              <label><span>Role</span><input id="f-role" maxlength="60" placeholder="Research helper" /></label>
+              <label><span>Accent colour</span><input id="f-color" type="color" value="#6c8cff" /></label>
+            </div>
+            <label><span>Tagline, shown on the card</span><input id="f-tagline" maxlength="120" placeholder="Digs through papers with you" /></label>
+            <label><span>Greeting, spoken when a call starts</span><input id="f-greeting" maxlength="400" placeholder="Ada here. What are we looking into?" /></label>
+            <label><span>Prompt: who they are and how they behave</span><textarea id="f-prompt" required placeholder="You are Ada, a precise research assistant…"></textarea></label>
+            <div class="row">
+              <label><span>Model</span><select id="f-model"></select></label>
+              <label><span>Conversation starters, one per line</span><textarea id="f-starters" style="min-height:0;height:42px" placeholder="Summarise this paper"></textarea></label>
+            </div>
+            <div class="actions">
+              <button class="primary" type="submit" id="save">Save agent</button>
+              <button class="danger" type="button" id="delete" hidden>Delete</button>
+              <span class="msg" id="msg"></span>
+            </div>
+          </form>
+          <p class="hint">A saved agent appears on the home page straight away. Reload the call window to see it.</p>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      const api = (p, o) => fetch(p, o).then((r) => r.json());
+      let agents = [];
+      let selected = null;
+
+      function swatch(a) {
+        return a.avatar?.kind === 'shape' ? a.avatar.color : a.color || '#6c8cff';
+      }
+
+      function renderStatus(s) {
+        $('status').innerHTML = '';
+        const chips = [
+          ['Model', `${s.model}`],
+          ['Provider', `${s.provider}`],
+          ['Agents', `${s.agents}`],
+          ['Data', s.dataDir],
+        ];
+        for (const [k, v] of chips) {
+          const el = document.createElement('span');
+          el.className = 'chip';
+          el.innerHTML = `${k}: <b></b>`;
+          el.querySelector('b').textContent = v;
+          $('status').append(el);
+        }
+      }
+
+      function renderList() {
+        $('list').innerHTML = '';
+        for (const a of agents) {
+          const li = document.createElement('li');
+          li.className = 'agent' + (selected?.id === a.id ? ' on' : '');
+          li.innerHTML = `<span class="dot"></span><span class="who"><b></b><span></span></span><span class="tag"></span>`;
+          li.querySelector('.dot').style.background = swatch(a);
+          li.querySelector('.who b').textContent = a.name;
+          li.querySelector('.who span').textContent = a.role || '';
+          li.querySelector('.tag').textContent = a.source === 'local' ? 'yours' : 'built in';
+          li.onclick = () => select(a);
+          $('list').append(li);
+        }
+      }
+
+      function select(a) {
+        selected = a;
+        $('form-title').textContent = a ? `Edit ${a.name}` : 'New agent';
+        $('builtin-note').hidden = !a || a.source !== 'builtin';
+        $('delete').hidden = !a || a.source !== 'local';
+        $('f-id').readOnly = !!a;
+        $('f-id').value = a?.id || '';
+        $('f-name').value = a?.name || '';
+        $('f-role').value = a?.role || '';
+        $('f-tagline').value = a?.tagline || '';
+        $('f-greeting').value = a?.greeting || '';
+        $('f-prompt').value = a?.prompt || '';
+        $('f-starters').value = (a?.starters || []).join('\n');
+        $('f-color').value = /^#[0-9a-f]{6}$/i.test(swatch(a || {})) ? swatch(a) : '#6c8cff';
+        if (a?.model?.name) $('f-model').value = a.model.name;
+        say('');
+        renderList();
+      }
+
+      function say(text, kind = '') {
+        $('msg').textContent = text;
+        $('msg').className = 'msg ' + kind;
+      }
+
+      // Suggest an id from the name until the user types one themselves.
+      $('f-name').addEventListener('input', () => {
+        if (selected || $('f-id').dataset.touched) return;
+        $('f-id').value = $('f-name').value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+      });
+      $('f-id').addEventListener('input', () => ($('f-id').dataset.touched = '1'));
+      $('new').onclick = () => {
+        delete $('f-id').dataset.touched;
+        select(null);
+      };
+
+      $('form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        $('save').disabled = true;
+        say('Saving…');
+        const body = {
+          id: $('f-id').value.trim(),
+          name: $('f-name').value.trim(),
+          role: $('f-role').value.trim(),
+          tagline: $('f-tagline').value.trim(),
+          greeting: $('f-greeting').value.trim(),
+          prompt: $('f-prompt').value.trim(),
+          color: $('f-color').value,
+          starters: $('f-starters').value.split('\n').map((s) => s.trim()).filter(Boolean),
+          model: { provider: 'ollama', name: $('f-model').value },
+        };
+        const out = await api('/api/desktop/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }).catch((err) => ({ error: err.message }));
+        $('save').disabled = false;
+        if (out.error) return say(out.error, 'err');
+        say('Saved', 'ok');
+        await load();
+        select(agents.find((a) => a.id === out.agent.id) || null);
+      });
+
+      $('delete').onclick = async () => {
+        if (!selected || !confirm(`Delete ${selected.name}? Their conversations stay on this machine.`)) return;
+        await api(`/api/desktop/agents?id=${encodeURIComponent(selected.id)}`, { method: 'DELETE' });
+        await load();
+        select(null);
+        say('Deleted', 'ok');
+      };
+
+      async function load() {
+        const [{ agents: list }, { models = [] }, status] = await Promise.all([
+          api('/api/desktop/agents'),
+          api('/api/desktop/models').catch(() => ({ models: [] })),
+          api('/api/desktop/status'),
+        ]);
+        agents = list;
+        renderStatus(status);
+        const keep = $('f-model').value;
+        $('f-model').innerHTML = '';
+        // Embedding models cannot hold a conversation, so keep them out of the
+        // chat picker even though the host has them pulled.
+        const chatModels = models.filter((m) => !/embed/i.test(m));
+        for (const m of chatModels.length ? chatModels : [status.model]) {
+          const o = document.createElement('option');
+          o.value = o.textContent = m;
+          $('f-model').append(o);
+        }
+        $('f-model').value = keep || status.model;
+        if (!$('f-model').value) $('f-model').selectedIndex = 0;
+        renderList();
+      }
+
+      await load();
+      select(null);
+    </script>
+  </body>
+</html>

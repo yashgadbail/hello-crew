@@ -29,6 +29,7 @@ machine, the eight characters are defined in one file you can edit, and every li
 - [Meet the crew](#meet-the-crew)
 - [What every call includes](#what-every-call-includes)
 - [Quick start (Docker)](#quick-start-docker-recommended)
+- [Desktop app](#desktop-app)
 - [Setup without Docker](#setup-without-docker-development)
 - [NCERT textbooks (for Kiki)](#ncert-textbooks-for-kiki)
 - [Using it on your phone](#using-it-on-your-phone)
@@ -93,6 +94,36 @@ docker compose up -d --build
 ```
 
 Then open the app at http://localhost:3000 and the admin panel at http://localhost:3001. **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** covers everything else: services, volumes, secrets, backups and restore, CI/CD, and moving to production.
+
+## Desktop app
+
+The desktop app runs the same agents on your own machine, with no server, no
+database to install and no account. It is an Electron shell around the runtime in
+`lib/`, storing conversations in SQLite and agents as JSON files.
+
+```sh
+npm install
+npm run desktop
+```
+
+It opens a window, puts an icon in the tray, and keeps answering once the window
+is closed. Quit from the tray to stop it. Everything lives in your user data
+folder: `%APPDATA%/hello-crew-desktop` on Windows.
+
+**Make your own agents.** Open "Agents and settings" from the tray. Give an agent
+a name, a prompt and a model, and it appears on the home page straight away. An
+agent you create gets a procedurally generated avatar, a coloured shape with eyes,
+so it needs no 3D assets. Built-in characters keep their Kenney models, and saving
+over one makes a local copy that overrides it.
+
+**Per-agent models.** Each agent names its own model, so a quick helper can run a
+small model while a tutor runs a larger one. Ollama is built in; the provider
+interface in `lib/providers/` is where Claude or OpenAI would slot in.
+
+> Running `npm run desktop` from inside another Electron app's terminal (Claude
+> Code, VS Code's integrated terminal) can fail with `app is undefined`. Those
+> apps set `ELECTRON_RUN_AS_NODE=1`, which makes Electron start as plain Node.
+> Unset it first, or launch from a normal terminal.
 
 ## Setup without Docker (development)
 

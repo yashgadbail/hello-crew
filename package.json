@@ -10,12 +10,17 @@
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node --env-file-if-exists=.env --watch server.js",
     "admin": "node --env-file-if-exists=.env admin/server.js",
-    "check": "node scripts/check.js"
+    "check": "node scripts/check.js",
+    "desktop": "npm start --workspace desktop",
+    "desktop:build": "npm run build --workspace desktop"
   },
   "engines": {
     "node": ">=22.13"
   },
   "dependencies": {
     "pg": "^8.23.0"
-  }
+  },
+  "workspaces": [
+    "desktop"
+  ]
 }

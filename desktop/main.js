@@ -15,7 +15,7 @@ const ICON = join(HERE, 'assets', 'icon.png');
 
 let host = null;
 let mainWindow = null;
-let settingsWindow = null;
+let callWindow = null;
 let tray = null;
 let quitting = false;
 
@@ -35,11 +35,11 @@ function createMainWindow() {
     minWidth: 420,
     backgroundColor: '#101218',
     icon: ICON,
-    title: 'Hello Crew',
+    title: 'Hello Crew host',
     autoHideMenuBar: true,
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
-  mainWindow.loadURL(host.url);
+  mainWindow.loadURL(`${host.url}/console`);
 
   // Links to the outside world open in the real browser, not inside the app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -57,23 +57,24 @@ function createMainWindow() {
   return mainWindow;
 }
 
-function createSettingsWindow() {
-  if (settingsWindow) {
-    settingsWindow.show();
-    settingsWindow.focus();
+/** The call view: the same browser UI the web app serves, for talking to your own agents. */
+function createCallWindow() {
+  if (callWindow) {
+    callWindow.show();
+    callWindow.focus();
     return;
   }
-  settingsWindow = new BrowserWindow({
+  callWindow = new BrowserWindow({
     width: 940,
     height: 780,
     backgroundColor: '#101218',
     icon: ICON,
-    title: 'Hello Crew settings',
+    title: 'Hello Crew',
     autoHideMenuBar: true,
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
-  settingsWindow.loadURL(`${host.url}/settings`);
-  settingsWindow.on('closed', () => (settingsWindow = null));
+  callWindow.loadURL(host.url);
+  callWindow.on('closed', () => (callWindow = null));
 }
 
 function buildTray() {
@@ -84,8 +85,8 @@ function buildTray() {
     Menu.buildFromTemplate([
       { label: `Hello Crew — ${host.url}`, enabled: false },
       { type: 'separator' },
-      { label: 'Open', click: () => createMainWindow() },
-      { label: 'Agents and settings', click: () => createSettingsWindow() },
+      { label: 'Host console', click: () => createMainWindow() },
+      { label: 'Call view', click: () => createCallWindow() },
       { label: 'Open in browser', click: () => shell.openExternal(host.url) },
       { type: 'separator' },
       {

@@ -1,0 +1,30 @@
+{
+  "name": "hello-crew-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hello Crew desktop host: runs your agents on your own machine.",
+  "author": "Prajakta Kharat",
+  "license": "MIT",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "host": "node host.js",
+    "build": "electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "^40.10.6",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.hellocrew.desktop",
+    "productName": "Hello Crew",
+    "files": ["**/*", "!**/*.map"],
+    "extraResources": [
+      { "from": "../lib", "to": "app/lib" },
+      { "from": "../public", "to": "app/public" }
+    ],
+    "win": { "target": ["nsis"] },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+  }
+}

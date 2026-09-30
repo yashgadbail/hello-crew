@@ -28,6 +28,57 @@ const _pos = new THREE.Vector3();
 const _euler = new THREE.Euler();
 const _quat = new THREE.Quaternion();
 
+const SHAPES = {
+  sphere: (R) => new THREE.SphereGeometry(R, 32, 24),
+  box: (R) => new THREE.BoxGeometry(R * 1.7, R * 1.7, R * 1.7),
+  cone: (R) => new THREE.ConeGeometry(R, R * 2.2, 32),
+  torus: (R) => new THREE.TorusGeometry(R * 0.75, R * 0.34, 20, 40),
+  capsule: (R) => new THREE.CapsuleGeometry(R * 0.72, R * 1.1, 12, 24),
+};
+
+/**
+ * A procedural avatar: a coloured body with a head and two eyes, so an agent you
+ * create yourself needs no 3D assets. Normalised to CHARACTER_HEIGHT on y = 0,
+ * exactly like the Kenney rigs, and with its head in a node named "head" so the
+ * existing look-at and talking motion drives it unchanged.
+ *
+ * @param {{shape?: string, color?: string}} spec
+ * @returns {{ model: THREE.Group, head: THREE.Group }}
+ */
+export function buildShape(spec = {}) {
+  const R = 0.28;
+  const color = new THREE.Color(spec.color || '#6c8cff');
+  const body = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1a1d27, roughness: 0.4 });
+  const white = new THREE.MeshStandardMaterial({ color: 0xf6f7fb, roughness: 0.5 });
+
+  const model = new THREE.Group();
+  const torso = new THREE.Mesh((SHAPES[spec.shape] || SHAPES.capsule)(R), body);
+  torso.castShadow = true;
+  model.add(torso);
+
+  const head = new THREE.Group();
+  head.name = 'head';
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(R * 0.62, 28, 20), body);
+  skull.castShadow = true;
+  head.add(skull);
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(R * 0.2, 16, 12), white);
+    eye.position.set(side * R * 0.26, R * 0.08, R * 0.42);
+    head.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(R * 0.095, 12, 10), dark);
+    pupil.position.set(side * R * 0.26, R * 0.08, R * 0.55);
+    head.add(pupil);
+  }
+  head.position.y = new THREE.Box3().setFromObject(torso).max.y + R * 0.45;
+  model.add(head);
+
+  const box = new THREE.Box3().setFromObject(model);
+  model.scale.setScalar(CHARACTER_HEIGHT / (box.max.y - box.min.y || 1));
+  model.position.y = -box.min.y * model.scale.y;
+  return { model, head };
+}
+
 function lerpAngle(a, b, k) {
   return a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
 }
@@ -114,6 +165,45 @@ export class Avatar {
     this.current = null;
     this.base = 'idle';
     this._play('idle');
+  }
+
+  /**
+   * Build a procedural avatar: a coloured body with a head and two eyes, so an
+   * agent you create yourself needs no 3D assets at all.
+   *
+   * It carries no skeleton, so there are no walk or gesture clips. It still gets
+   * an (empty) mixer and a head named the same way the Kenney rigs name theirs,
+   * which means the look-at, talking and nodding motion in update() drives it
+   * unchanged.
+   *
+   * @param {{shape?: string, color?: string, seed?: number}} spec
+   */
+  async setShape(spec = {}) {
+    const key = `shape:${spec.shape}:${spec.color}`;
+    if (key === this.character && this.model) return;
+    this.character = key;
+    const token = ++this.loadToken;
+
+    const { model, head } = buildShape(spec);
+    if (token !== this.loadToken) return;
+    if (this.model) {
+      this.mixer?.stopAllAction();
+      this.group.remove(this.model);
+    }
+    this.model = model;
+    this.group.add(model);
+
+    this.head = head;
+    this.headRest = head.quaternion.clone();
+    this.headScale = head.scale.clone();
+    this.headPitch = 0;
+    this.headRoll = 0;
+
+    // An empty mixer keeps update() and _play() working with no clips.
+    this.mixer = new THREE.AnimationMixer(model);
+    this.actions = {};
+    this.current = null;
+    this.base = 'idle';
   }
 
   _play(name, { once = false, repetitions = 1 } = {}) {

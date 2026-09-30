@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { Avatar, loadCharacter, CHARACTER_HEIGHT } from './avatar.js';
+import { Avatar, loadCharacter, buildShape, CHARACTER_HEIGHT } from './avatar.js';
 import { SCENES } from './scenes.js';
 
 const AR_SCALE = 0.7; // ~0.5 m tall in your room: a desk-top buddy rather than a child-sized figure
@@ -98,13 +98,18 @@ export class Stage {
   // Loading a persona's scene
   // -------------------------------------------------------------------------
   async load(persona) {
-    const def = SCENES[persona.scene];
+    // An agent you made yourself has no Kenney character or room, so it gets a
+    // procedural avatar and a neutral room instead of failing to load.
+    const avatar = persona.avatar || (persona.character ? { kind: 'kenney' } : { kind: 'shape' });
+    const def = SCENES[persona.scene || avatar.scene] || SCENES.lounge;
     this.def = def;
     const token = (this.loadToken = (this.loadToken || 0) + 1);
 
     const [props] = await Promise.all([
       Promise.all(def.props.map((p) => loadProp(p.m).catch((err) => (console.warn(p.m, err), null)))),
-      this.avatar.setCharacter(persona.character),
+      avatar.kind === 'kenney'
+        ? this.avatar.setCharacter(avatar.character || persona.character)
+        : this.avatar.setShape(avatar),
     ]);
     if (token !== this.loadToken) return;
 
@@ -488,16 +493,23 @@ export async function renderPortraits(personas, size = 320) {
   const out = {};
   for (const p of personas) {
     try {
-      const gltf = await loadCharacter(p.character);
-      const model = SkeletonUtils.clone(gltf.scene);
-      const box = new THREE.Box3().setFromObject(model);
-      model.scale.setScalar(CHARACTER_HEIGHT / (box.max.y - box.min.y));
-      model.position.y = -box.min.y * model.scale.y;
+      const avatar = p.avatar || (p.character ? { kind: 'kenney' } : { kind: 'shape' });
+      let model;
+      if (avatar.kind === 'kenney') {
+        const gltf = await loadCharacter(avatar.character || p.character);
+        model = SkeletonUtils.clone(gltf.scene);
+        const box = new THREE.Box3().setFromObject(model);
+        model.scale.setScalar(CHARACTER_HEIGHT / (box.max.y - box.min.y));
+        model.position.y = -box.min.y * model.scale.y;
+        const mixer = new THREE.AnimationMixer(model);
+        const idle = gltf.animations.find((a) => a.name === 'idle');
+        if (idle) mixer.clipAction(idle).play();
+        mixer.update(0.4);
+      } else {
+        // Agents you made yourself: same procedural avatar the call screen uses.
+        model = buildShape(avatar).model;
+      }
       model.rotation.y = -0.25;
-      const mixer = new THREE.AnimationMixer(model);
-      const idle = gltf.animations.find((a) => a.name === 'idle');
-      if (idle) mixer.clipAction(idle).play();
-      mixer.update(0.4);
       scene.add(model);
       renderer.render(scene, camera);
       out[p.id] = renderer.domElement.toDataURL('image/png');

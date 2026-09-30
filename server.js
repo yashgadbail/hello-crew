@@ -14,7 +14,8 @@ import { respond } from './lib/chat.js';
 import { addDocument, listDocuments, removeDocument } from './lib/rag.js';
 import { fetchPage } from './lib/web.js';
 import { AuthError, signUp, logIn, renameUser, createSession, userFromRequest, endSession, signupMode, seedInvites } from './lib/auth.js';
-import { getHistory, addMessage, historyCounts, getMemory, forget, eraseAll, saveStudy, learnFromTurn, memoryNote, greetingFor } from './lib/memory.js';
+import { getHistory, addMessage, historyCounts, getMemory, forget, eraseAll, saveStudy, learnFromTurn, memoryNote, greetingFor, useStore } from './lib/memory.js';
+import { postgresStore } from './lib/store/postgres.js';
 import { ready as dbReady, query } from './lib/db.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -440,6 +441,7 @@ const server = useHttps
 
 // The schema must be current before we take requests (Postgres may still be starting).
 await dbReady();
+useStore(postgresStore());
 await seedInvites();
 server.listen(PORT, HOST, () => {
   const scheme = useHttps ? 'https' : 'http';
